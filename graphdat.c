@@ -25,6 +25,7 @@ static char * s_source = NULL;
 static int s_sourcelen;
 static int s_sockfd = -1;
 static bool s_lastwaserror = false;
+static bool s_lastwritesuccess = false;
 static list_t s_requests;
 
 static pthread_mutex_t s_mux = PTHREAD_MUTEX_INITIALIZER;
@@ -150,6 +151,7 @@ void socket_send(char * data, int len, logger_delegate_t logger, void * log_cont
 	{
 		logger(log_context, "graphdat error: could not write socket '%s' (%d) - [%d] %s", s_sockfile, s_sockfd, wrote, strerror(wrote));
 		socket_close();
+		s_lastwritesuccess = false;
 	}
         else
 	{
@@ -158,10 +160,15 @@ void socket_send(char * data, int len, logger_delegate_t logger, void * log_cont
 		{
 			logger(log_context, "graphdat error: could not write socket '%s' (%d) - [%d] %s", s_sockfile, s_sockfd, wrote, strerror(wrote));
 			socket_close();
+			s_lastwritesuccess = false;
 		}
-		else if(s_lastwaserror)
+		else
 		{
-			logger(log_context, "graphdat: sending data on socket '%s' (%d)", s_sockfile, s_sockfd);
+			if(!s_lastwritesuccess)
+			{
+				logger(log_context, "graphdat: sending data on socket '%s' (%d)", s_sockfile, s_sockfd);
+				s_lastwritesuccess = true;
+			}
 			s_lastwaserror = false;
 		}
 		//else
