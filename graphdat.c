@@ -67,7 +67,7 @@ bool socket_connect(logger_delegate_t logger, void * log_context) {
 		if (s_sockfd < 0)
 		{
 			if(!s_lastwaserror) {
-				logger(log_context, "graphdat error: could not create socket (%s)", strerror(s_sockfd));
+				logger(log_context, "graphdat error: could not create socket '%s' - [%d] %s", s_sockfile, s_sockfd, strerror(s_sockfd));
 				s_lastwaserror = true;
 			}
 			return false;
@@ -84,7 +84,7 @@ bool socket_connect(logger_delegate_t logger, void * log_context) {
 		if(result < 0)
 		{
 			if(!s_lastwaserror) {
-				logger(log_context, "graphdat error: could not connect socket (%s)", strerror(result));
+				logger(log_context, "graphdat error: could not connect socket '%s' (%d) - [%d] %s", s_sockfile, s_sockfd, result, strerror(result));
 				s_lastwaserror = true;
 			}
 			socket_close();
@@ -148,7 +148,7 @@ void socket_send(char * data, int len, logger_delegate_t logger, void * log_cont
 	int wrote = write(s_sockfd, &nlen, sizeof(nlen));
 	if(wrote < 0)
 	{
-		logger(log_context, "graphdat error: could not write socket (%s)", strerror(wrote));
+		logger(log_context, "graphdat error: could not write socket '%s' (%d) - [%d] %s", s_sockfile, s_sockfd, wrote, strerror(wrote));
 		socket_close();
 	}
         else
@@ -156,14 +156,18 @@ void socket_send(char * data, int len, logger_delegate_t logger, void * log_cont
 		wrote = write(s_sockfd, data, len);
 		if(wrote < 0)
 		{
-			logger(log_context, "graphdat error: could not write socket (%s)", strerror(wrote));
+			logger(log_context, "graphdat error: could not write socket '%s' (%d) - [%d] %s", s_sockfile, s_sockfd, wrote, strerror(wrote));
 			socket_close();
 		}
-		else
+		else if(s_lastwaserror)
 		{
-			//logger(log_context, "socket_send (%d bytes)", wrote);
+			logger(log_context, "graphdat: sending data on socket '%s' (%d)", s_sockfile, s_sockfd);
 			s_lastwaserror = false;
 		}
+		//else
+		//{
+		//	logger(log_context, "socket_send (%d bytes)", wrote);
+		//}
         }
 }
 
