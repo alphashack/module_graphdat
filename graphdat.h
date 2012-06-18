@@ -1,6 +1,8 @@
 #ifndef GRAPHDAT_H
 #define GRAPHDAT_H
 
+#include "os.h"
+
 typedef enum _graphdat_log_t
 {
 	SUCCESS_MESSAGE,

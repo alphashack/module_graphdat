@@ -1,6 +1,7 @@
 #include "mutex.h"
 
 #include <pthread.h>
+#include <malloc.h>
 
 gd_mutex_t mutexNew()
 {
