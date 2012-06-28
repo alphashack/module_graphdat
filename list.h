@@ -2,8 +2,8 @@
  * list.h
  */
 
-#ifndef LIST_H
-#define LIST_H
+#ifndef GD_LIST_H
+#define GD_LIST_H
 
 typedef void * list_t;
 
@@ -15,4 +15,4 @@ void listAppendBack(list_t lst, void *);
 void *listRemoveFront(list_t lst);
 int listCount(list_t lst);
 
-#endif /* LIST_H_ */
+#endif /* GD_LIST_H_ */

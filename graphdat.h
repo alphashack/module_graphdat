@@ -1,24 +1,29 @@
 #ifndef GRAPHDAT_H
 #define GRAPHDAT_H
 
-#include <stdbool.h>
-#include <stdint.h>
+typedef enum _graphdat_log_t
+{
+	SUCCESS_MESSAGE,
+	ERROR_MESSAGE,
+	WARNING_MESSAGE,
+	INFORMATION_MESSAGE
+} graphdat_log_t;
 
-typedef void (*logger_delegate_t)(void * user, const char * fmt, ...);
+typedef void (*logger_delegate_t)(graphdat_log_t type, void * user, const char * fmt, ...);
 
 typedef struct {
 	char* method;
-	int methodlen;
+	size_t methodlen;
 	char* uri;
-	int urilen;
+	size_t urilen;
 	double msec;
 	logger_delegate_t logger;
 	void * log_context;
 } request_t;
 
-void graphdat_init(char * file, int filelen, char* source, int sourcelen, logger_delegate_t logger, void * log_context);
+void graphdat_init(char * config, size_t configlen, char* source, size_t sourcelen, logger_delegate_t logger, void * log_context);
 void graphdat_term(logger_delegate_t logger, void * log_context);
-void graphdat_store(char* method, int methodlen, char* uri, int urilen, double msec, logger_delegate_t logger, void * log_context, int log_context_len);
+void graphdat_store(char* method, size_t methodlen, char* uri, size_t urilen, double msec, logger_delegate_t logger, void * log_context, size_t log_context_len);
 
 #endif /* GRAPHDAT_H */
 

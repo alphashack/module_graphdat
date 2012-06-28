@@ -1,8 +1,9 @@
 /********************************************************************************
  * list.c
  */
+
 #include "list.h"
-#include <unistd.h>
+
 #include <stdlib.h>
 
 typedef struct list_node_s list_node_t;
@@ -35,7 +36,7 @@ list_node_t * listUnlinkNode(
  */
 list_t listNew()
 {
-	listi_t * plst = malloc(sizeof(listi_t));
+	listi_t * plst = (listi_t *)malloc(sizeof(listi_t));
 
 	plst->phead = NULL;
 	plst->ptail = NULL;
@@ -49,7 +50,7 @@ list_t listNew()
  */
 list_node_t * listAllocNode()
 {
-	list_node_t * pn = malloc(sizeof(list_node_t));
+	list_node_t * pn = (list_node_t *)malloc(sizeof(list_node_t));
 
 	pn->pdata = NULL;
 	pn->pnext = NULL;
@@ -79,8 +80,9 @@ void listDel(
 {
 	listi_t * plst = (listi_t *) lst;
 
-	if (plst == NULL)
-		return;
+	//if (plst == NULL)
+	//	return;
+	plst=NULL;
 
 	list_node_t * pnext;
 	list_node_t * p;

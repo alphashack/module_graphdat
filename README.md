@@ -13,5 +13,3 @@ If someone else updates the submodule, you can get the new version by:
 
 	git submodule init
 	git submodule update
-	
-	

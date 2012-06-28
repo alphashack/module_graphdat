@@ -1,41 +1,45 @@
 #include "graphdat.h"
 #include "list.h"
 
+#include "os.h"
+#include "mutex.h"
+#include "thread.h"
+#include "socket.h"
+
+#include <msgpack.h>
+
 #include <sys/types.h>
-#include <unistd.h>
 #include <stdlib.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <errno.h>
-#include <msgpack.h>
-#include <pthread.h>
-#include <netinet/in.h>
 
 #ifndef GRAPHDAT_WORKER_LOOP_SLEEP
 // GRAPHDAT_WORKER_LOOP_SLEEP usec
 #define GRAPHDAT_WORKER_LOOP_SLEEP 100000
 #endif
 
+#define VERBOSE_LOGGING false
+
 static bool s_init = false;
 static bool s_running = true;
-static char * s_sockfile = NULL;
+static char * s_sockconfig = NULL;
 static char * s_source = NULL;
-static int s_sourcelen;
-static int s_sockfd = -1;
+static size_t s_sourcelen;
 static bool s_lastwaserror = false;
 static bool s_lastwritesuccess = false;
 static list_t s_requests;
 
-static pthread_mutex_t s_mux = PTHREAD_MUTEX_INITIALIZER;
-static pthread_t s_thread;
+static gd_mutex_t s_mux = NULL;
+static gd_thread_t s_thread = NULL;
 
-void graphdat_send(char* method, int methodlen, char* uri, int urilen, double msec, logger_delegate_t logger, void * log_context);
+static int s_sock = -1;
+
+void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, double msec, logger_delegate_t logger, void * log_context);
 
 void socket_close() {
-	close(s_sockfd);
-	s_sockfd = -1;
+	socketClose(s_sock);
+	s_sock = -1;
 }
 
 void del_request(request_t * req) {
@@ -53,43 +57,60 @@ void dlg_del_request(void * item) {
 void socket_term(logger_delegate_t logger, void * log_context) {
         if(s_init) {
             s_running = false;
-            pthread_join(s_thread, NULL);
-	    socket_close();
-	    free(s_sockfile);
-	    free(s_source);
+            threadJoin(s_thread);
+			socket_close();
+			free(s_sockconfig);
+			free(s_source);
             listDel(s_requests, dlg_del_request);
         }
 }
 
 bool socket_connect(logger_delegate_t logger, void * log_context) {
-	if(s_sockfd < 0)
+	if(s_sock < 0)
 	{
-		s_sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-		if (s_sockfd < 0)
+		s_sock = socketNew();
+		if (s_sock < 0)
 		{
-			if(!s_lastwaserror) {
-				logger(log_context, "graphdat error: could not create socket '%s' - [%d] %s", s_sockfile, s_sockfd, strerror(s_sockfd));
+			if(!s_lastwaserror || VERBOSE_LOGGING) {
+				char * msg = socketGetLastStringError();
+				logger(ERROR_MESSAGE, log_context, "graphdat error: could not create socket '%s' - [%d] %s", s_sockconfig, s_sock, msg);
+				socketDelStringError(msg);
 				s_lastwaserror = true;
 			}
 			return false;
 		}
-		fcntl(s_sockfd, F_SETFL, O_NONBLOCK);
 
-		struct sockaddr_un serv_addr;
-		int servlen;
-		bzero((char *) &serv_addr, sizeof(serv_addr));
-		serv_addr.sun_family = AF_UNIX;
-		strcpy(serv_addr.sun_path, s_sockfile);
-		servlen = sizeof(serv_addr.sun_family) + strlen(serv_addr.sun_path) + 1;
-		int result = connect(s_sockfd, (struct sockaddr *)&serv_addr, servlen);
+		int result = socketConnect(s_sock, s_sockconfig);
 		if(result < 0)
 		{
-			if(!s_lastwaserror) {
-				logger(log_context, "graphdat error: could not connect socket '%s' (%d) - [%d] %s", s_sockfile, s_sockfd, result, strerror(result));
+			if(!s_lastwaserror || VERBOSE_LOGGING) {
+				int err = socketGetLastError();
+				char * msg = socketGetStringError(err);
+				logger(ERROR_MESSAGE, log_context, "graphdat error: could not connect socket '%s' (%d) - [%d] %s", s_sockconfig, s_sock, err, msg);
+				socketDelStringError(msg);
 				s_lastwaserror = true;
 			}
 			socket_close();
 			return false;
+		}
+
+		result = socketSetNonBlock(s_sock);
+		if(result < 0)
+		{
+			if(!s_lastwaserror || VERBOSE_LOGGING) {
+				int err = socketGetLastError();
+				char * msg = socketGetStringError(err);
+				logger(ERROR_MESSAGE, log_context, "graphdat error: could set non blocking socket '%s' (%d) - [%d] %s", s_sockconfig, s_sock, err, msg);
+				socketDelStringError(msg);
+				s_lastwaserror = true;
+			}
+			socket_close();
+			return false;
+		}
+
+		if(VERBOSE_LOGGING)
+		{
+			logger(INFORMATION_MESSAGE, log_context, "graphdat info: soket connected '%s' (%d)", s_sockconfig, s_sock);
 		}
 	}
 	return true;
@@ -98,7 +119,7 @@ bool socket_connect(logger_delegate_t logger, void * log_context) {
 bool socket_check(logger_delegate_t logger, void * log_context) {
 	if(!s_init) {
 		if(!s_lastwaserror) {
-			logger(log_context, "graphdat error: not initialised");
+			logger(ERROR_MESSAGE, log_context, "graphdat error: not initialised");
 			s_lastwaserror = true;
 		}
 		return false;
@@ -111,9 +132,9 @@ void* worker(void* arg)
 	request_t *req;
 
 	while(s_running) {
-		pthread_mutex_lock(&s_mux);
-		req = listRemoveFront(s_requests);
-		pthread_mutex_unlock(&s_mux);
+		mutexAcquire(s_mux);
+		req = (request_t *)listRemoveFront(s_requests);
+		mutexRelease(s_mux);
 
 		if(req != NULL) {
 			graphdat_send(req->method, req->methodlen, req->uri, req->urilen, req->msec, req->logger, req->log_context);
@@ -127,38 +148,49 @@ void* worker(void* arg)
 	return NULL;
 }
 
-void socket_init(char * file, int filelen, char* source, int sourcelen, logger_delegate_t logger, void * log_context) {
-	s_sockfile = malloc(filelen + 1);
-	memcpy(s_sockfile, file, filelen);
-	s_sockfile[filelen] = 0;
-	s_sockfd = -1;
-	s_source = malloc(sourcelen + 1);
+void socket_init(char * config, size_t configlen, char* source, size_t sourcelen, logger_delegate_t logger, void * log_context) {
+	s_sockconfig = (char *)malloc(configlen + 1);
+	memcpy(s_sockconfig, config, configlen);
+	s_sockconfig[configlen] = 0;
+	s_sock = -1;
+	s_source = (char *)malloc(sourcelen + 1);
 	s_sourcelen = sourcelen;
 	memcpy(s_source, source, sourcelen);
 	s_source[sourcelen] = 0;
 	s_requests = listNew();
-	pthread_create(&s_thread, NULL, worker, NULL);
+	s_thread = threadNew(worker, NULL);
 	s_init = true;
 }
 
-void socket_send(char * data, int len, logger_delegate_t logger, void * log_context) {
+void socket_send(char * data, size_t len, logger_delegate_t logger, void * log_context) {
 	if(!socket_check(logger, log_context)) return;
 
-	int nlen = htonl(len);
+	int datalen = (int)len;
+	if(datalen < 0)
+	{
+		logger(ERROR_MESSAGE, log_context, "graphdat error: could not write socket '%s' (%d) - data too long", s_sockconfig, s_sock);
+		return;
+	}
 
-	int wrote = write(s_sockfd, &nlen, sizeof(nlen));
+	int nlen = htonl(datalen);
+
+	int wrote = socketWrite(s_sock, &nlen, sizeof(nlen));
 	if(wrote < 0)
 	{
-		logger(log_context, "graphdat error: could not write socket '%s' (%d) - [%d] %s", s_sockfile, s_sockfd, wrote, strerror(wrote));
+		char * msg = socketGetLastStringError();
+		logger(ERROR_MESSAGE, log_context, "graphdat error: could not write socket '%s' (%d) - [%d] %s", s_sockconfig, s_sock, wrote, msg);
+		socketDelStringError(msg);
 		socket_close();
 		s_lastwritesuccess = false;
 	}
-        else
+    else
 	{
-		wrote = write(s_sockfd, data, len);
+		wrote = socketWrite(s_sock, data, datalen);
 		if(wrote < 0)
 		{
-			logger(log_context, "graphdat error: could not write socket '%s' (%d) - [%d] %s", s_sockfile, s_sockfd, wrote, strerror(wrote));
+			char * msg = socketGetLastStringError();
+			logger(ERROR_MESSAGE, log_context, "graphdat error: could not write socket '%s' (%d) - [%d] %s", s_sockconfig, s_sock, wrote, msg);
+			socketDelStringError(msg);
 			socket_close();
 			s_lastwritesuccess = false;
 		}
@@ -166,69 +198,72 @@ void socket_send(char * data, int len, logger_delegate_t logger, void * log_cont
 		{
 			if(!s_lastwritesuccess)
 			{
-				logger(log_context, "graphdat: sending data on socket '%s' (%d)", s_sockfile, s_sockfd);
+				logger(SUCCESS_MESSAGE, log_context, "graphdat: sending data on socket '%s' (%d)", s_sockconfig, s_sock);
 				s_lastwritesuccess = true;
 			}
 			s_lastwaserror = false;
 		}
-		//else
-		//{
-		//	logger(log_context, "socket_send (%d bytes)", wrote);
-		//}
-        }
+
+		if(VERBOSE_LOGGING)
+		{
+			logger(INFORMATION_MESSAGE, log_context, "graphdat info: socket sent %d bytes to '%s' (%d)", wrote, s_sockconfig, s_sock);
+		}
+	}
 }
 
-void graphdat_init(char * file, int filelen, char* source, int sourcelen, logger_delegate_t logger, void * log_context) {
-	socket_init(file, filelen, source, sourcelen, logger, log_context);
+void graphdat_init(char * config, size_t configlen, char* source, size_t sourcelen, logger_delegate_t logger, void * log_context) {
+	s_mux = mutexNew();
+	socket_init(config, configlen, source, sourcelen, logger, log_context);
 }
 
 void graphdat_term(logger_delegate_t logger, void * log_context) {
 	socket_term(logger, log_context);
+	mutexDel(s_mux);
 }
 
-void graphdat_send(char* method, int methodlen, char* uri, int urilen, double msec, logger_delegate_t logger, void * log_context) {
+void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, double msec, logger_delegate_t logger, void * log_context) {
 	msgpack_sbuffer* buffer = msgpack_sbuffer_new();
-        msgpack_packer* pk = msgpack_packer_new(buffer, msgpack_sbuffer_write);
+	msgpack_packer* pk = msgpack_packer_new(buffer, msgpack_sbuffer_write);
 
 	msgpack_pack_map(pk, 4); // timestamp, type, route, responsetime, source
 	// timestamp
 	msgpack_pack_raw(pk, 9);
-        msgpack_pack_raw_body(pk, "timestamp", 9);
+	msgpack_pack_raw_body(pk, "timestamp", 9);
 	msgpack_pack_int(pk, 1);
 	// type
 	msgpack_pack_raw(pk, 4);
-        msgpack_pack_raw_body(pk, "type", 4);
+	msgpack_pack_raw_body(pk, "type", 4);
 	msgpack_pack_raw(pk, 6);
-        msgpack_pack_raw_body(pk, "Sample", 6);
+	msgpack_pack_raw_body(pk, "Sample", 6);
 	// route
 	msgpack_pack_raw(pk, 5);
-        msgpack_pack_raw_body(pk, "route", 5);
+	msgpack_pack_raw_body(pk, "route", 5);
 	msgpack_pack_raw(pk, urilen);
-        msgpack_pack_raw_body(pk, uri, urilen);
+	msgpack_pack_raw_body(pk, uri, urilen);
 	// responsetime
 	msgpack_pack_raw(pk, 12);
-        msgpack_pack_raw_body(pk, "responsetime", 12);
+	msgpack_pack_raw_body(pk, "responsetime", 12);
 	msgpack_pack_double(pk, msec);
 	// source
 	msgpack_pack_raw(pk, 6);
-        msgpack_pack_raw_body(pk, "source", 6);
+	msgpack_pack_raw_body(pk, "source", 6);
 	msgpack_pack_raw(pk, 5);
-        msgpack_pack_raw_body(pk, s_source, s_sourcelen);
+	msgpack_pack_raw_body(pk, s_source, s_sourcelen);
         
 	socket_send(buffer->data, buffer->size, logger, log_context);
 
 	msgpack_sbuffer_free(buffer);
-        msgpack_packer_free(pk);
+	msgpack_packer_free(pk);
 }
 
-void graphdat_store(char* method, int methodlen, char* uri, int urilen, double msec, logger_delegate_t logger, void * log_context, int log_context_len) {
-	request_t *req = malloc(sizeof(request_t));
+void graphdat_store(char* method, size_t methodlen, char* uri, size_t urilen, double msec, logger_delegate_t logger, void * log_context, size_t log_context_len) {
+	request_t *req = (request_t *)malloc(sizeof(request_t));
 	// method
-	req->method = malloc(methodlen);
+	req->method = (char *)malloc(methodlen);
 	memcpy(req->method, method, methodlen);
 	req->methodlen = methodlen;
 	// uri
-	req->uri = malloc(urilen);
+	req->uri = (char *)malloc(urilen);
 	memcpy(req->uri, uri, urilen);
 	req->urilen = urilen;
 	// msec
@@ -245,8 +280,7 @@ void graphdat_store(char* method, int methodlen, char* uri, int urilen, double m
 		req->log_context = NULL;
 	}
 
-	pthread_mutex_lock(&s_mux);
+	mutexAcquire(s_mux);
 	listAppendBack(s_requests, req);
-	pthread_mutex_unlock(&s_mux);
+	mutexRelease(s_mux);
 }
-
