@@ -225,6 +225,15 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, dou
 	msgpack_sbuffer* buffer = msgpack_sbuffer_new();
 	msgpack_packer* pk = msgpack_packer_new(buffer, msgpack_sbuffer_write);
 
+	// format route
+	int routelen = urilen + methodlen + 2; // len including space, null term
+	char * route = malloc(routelen);
+	strncpy(route, method, methodlen);
+	route[methodlen] = ' '; // append space
+	route[methodlen + 1] = '\0'; // and null term
+	strncat(route, uri, urilen);
+	route[routelen - 1] = '\0';
+
 	msgpack_pack_map(pk, 4); // timestamp, type, route, responsetime, source
 	// timestamp
 	msgpack_pack_raw(pk, 9);
@@ -239,7 +248,7 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, dou
 	msgpack_pack_raw(pk, 5);
 	msgpack_pack_raw_body(pk, "route", 5);
 	msgpack_pack_raw(pk, urilen);
-	msgpack_pack_raw_body(pk, uri, urilen);
+	msgpack_pack_raw_body(pk, route, routelen - 1);
 	// responsetime
 	msgpack_pack_raw(pk, 12);
 	msgpack_pack_raw_body(pk, "responsetime", 12);
@@ -254,6 +263,8 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, dou
 
 	msgpack_sbuffer_free(buffer);
 	msgpack_packer_free(pk);
+
+	free(route);
 }
 
 void graphdat_store(char* method, size_t methodlen, char* uri, size_t urilen, double msec, logger_delegate_t logger, void * log_context, size_t log_context_len) {
