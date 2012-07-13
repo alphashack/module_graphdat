@@ -227,7 +227,7 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, dou
 
 	// format route
 	int routelen = urilen + methodlen + 2; // len including space, null term
-	char * route = malloc(routelen);
+	char * route = (char *)malloc(routelen);
 	strncpy(route, method, methodlen);
 	route[methodlen] = ' '; // append space
 	route[methodlen + 1] = '\0'; // and null term
