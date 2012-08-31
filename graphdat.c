@@ -226,13 +226,23 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, dou
 	msgpack_packer* pk = msgpack_packer_new(buffer, msgpack_sbuffer_write);
 
 	// format route
-	int routelen = urilen + methodlen + 2; // len including space, null term
-	char * route = (char *)malloc(routelen);
-	strncpy(route, method, methodlen);
-	route[methodlen] = ' '; // append space
-	route[methodlen + 1] = '\0'; // and null term
-	strncat(route, uri, urilen);
-	route[routelen - 1] = '\0';
+	int routelen;
+	char * route;
+	if(methodlen > 0)
+	{
+		routelen = urilen + methodlen + 1; // len including space
+		route = (char *)malloc(routelen);
+		strncpy(route, method, methodlen);
+		route[methodlen] = ' '; // append space
+		route[methodlen + 1] = '\0'; // and null term for strncat
+		strncat(route, uri, urilen);
+	}
+	else
+	{
+		routelen = urilen;
+		route = (char *)malloc(routelen);
+		strncat(route, uri, urilen);
+	}
 
 	msgpack_pack_map(pk, 4); // timestamp, type, route, responsetime, source
 	// timestamp
@@ -247,8 +257,8 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, dou
 	// route
 	msgpack_pack_raw(pk, 5);
 	msgpack_pack_raw_body(pk, "route", 5);
-	msgpack_pack_raw(pk, urilen);
-	msgpack_pack_raw_body(pk, route, routelen - 1);
+	msgpack_pack_raw(pk, routelen);
+	msgpack_pack_raw_body(pk, route, routelen);
 	// responsetime
 	msgpack_pack_raw(pk, 12);
 	msgpack_pack_raw_body(pk, "responsetime", 12);
@@ -256,7 +266,7 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, dou
 	// source
 	msgpack_pack_raw(pk, 6);
 	msgpack_pack_raw_body(pk, "source", 6);
-	msgpack_pack_raw(pk, 5);
+	msgpack_pack_raw(pk, s_sourcelen);
 	msgpack_pack_raw_body(pk, s_source, s_sourcelen);
         
 	socket_send(buffer->data, buffer->size, logger, log_context);
