@@ -225,6 +225,7 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, dou
 	msgpack_sbuffer* buffer = msgpack_sbuffer_new();
 	msgpack_packer* pk = msgpack_packer_new(buffer, msgpack_sbuffer_write);
 
+	methodlen=0;
 	// format route
 	int routelen;
 	char * route;
@@ -232,16 +233,15 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, dou
 	{
 		routelen = urilen + methodlen + 1; // len including space
 		route = (char *)malloc(routelen);
-		strncpy(route, method, methodlen);
+		memcpy(route, method, methodlen);
 		route[methodlen] = ' '; // append space
-		route[methodlen + 1] = '\0'; // and null term for strncat
-		strncat(route, uri, urilen);
+		memcpy(route + methodlen + 1, uri, urilen);
 	}
 	else
 	{
 		routelen = urilen;
 		route = (char *)malloc(routelen);
-		strncat(route, uri, urilen);
+		memcpy(route, uri, urilen);
 	}
 
 	msgpack_pack_map(pk, 4); // timestamp, type, route, responsetime, source
