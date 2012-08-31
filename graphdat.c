@@ -225,7 +225,6 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, dou
 	msgpack_sbuffer* buffer = msgpack_sbuffer_new();
 	msgpack_packer* pk = msgpack_packer_new(buffer, msgpack_sbuffer_write);
 
-	methodlen=0;
 	// format route
 	int routelen;
 	char * route;
