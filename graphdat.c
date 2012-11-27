@@ -35,7 +35,7 @@ static gd_thread_t s_thread = NULL;
 
 static int s_sock = -1;
 
-void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, double msec, logger_delegate_t logger, void * log_context);
+void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, char* host, size_t hostlen, double msec, logger_delegate_t logger, void * log_context);
 
 void socket_close() {
 	socketClose(s_sock);
@@ -44,9 +44,10 @@ void socket_close() {
 
 void del_request(request_t * req) {
 	free(req->log_context);
+	free(req->host);
 	free(req->uri);
 	free(req->method);
-	free(req);	
+	free(req);
 }
 
 void dlg_del_request(void * item) {
@@ -137,7 +138,7 @@ void* worker(void* arg)
 		mutexRelease(s_mux);
 
 		if(req != NULL) {
-			graphdat_send(req->method, req->methodlen, req->uri, req->urilen, req->msec, req->logger, req->log_context);
+			graphdat_send(req->method, req->methodlen, req->uri, req->urilen, req->host, req-> hostlen, req->msec, req->logger, req->log_context);
 			del_request(req);
 		}
 		else
@@ -221,7 +222,7 @@ void graphdat_term(logger_delegate_t logger, void * log_context) {
 	mutexDel(s_mux);
 }
 
-void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, double msec, logger_delegate_t logger, void * log_context) {
+void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, char* host, size_t hostlen, double msec, logger_delegate_t logger, void * log_context) {
 	msgpack_sbuffer* buffer = msgpack_sbuffer_new();
 	msgpack_packer* pk = msgpack_packer_new(buffer, msgpack_sbuffer_write);
 
@@ -243,7 +244,7 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, dou
 		memcpy(route, uri, urilen);
 	}
 
-	msgpack_pack_map(pk, 4); // timestamp, type, route, responsetime, source
+	msgpack_pack_map(pk, 4); // timestamp, type, host, route, responsetime, source
 	// timestamp
 	msgpack_pack_raw(pk, 9);
 	msgpack_pack_raw_body(pk, "timestamp", 9);
@@ -253,6 +254,11 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, dou
 	msgpack_pack_raw_body(pk, "type", 4);
 	msgpack_pack_raw(pk, 6);
 	msgpack_pack_raw_body(pk, "Sample", 6);
+	// host
+	msgpack_pack_raw(pk, 4);
+	msgpack_pack_raw_body(pk, "host", 4);
+	msgpack_pack_raw(pk, hostlen);
+	msgpack_pack_raw_body(pk, host, hostlen);
 	// route
 	msgpack_pack_raw(pk, 5);
 	msgpack_pack_raw_body(pk, "route", 5);
@@ -267,7 +273,7 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, dou
 	msgpack_pack_raw_body(pk, "source", 6);
 	msgpack_pack_raw(pk, s_sourcelen);
 	msgpack_pack_raw_body(pk, s_source, s_sourcelen);
-        
+
 	socket_send(buffer->data, buffer->size, logger, log_context);
 
 	msgpack_sbuffer_free(buffer);
@@ -276,7 +282,7 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, dou
 	free(route);
 }
 
-void graphdat_store(char* method, size_t methodlen, char* uri, size_t urilen, double msec, logger_delegate_t logger, void * log_context, size_t log_context_len) {
+void graphdat_store(char* method, size_t methodlen, char* uri, size_t urilen, char* host, size_t hostlen, double msec, logger_delegate_t logger, void * log_context, size_t log_context_len) {
 	request_t *req = (request_t *)malloc(sizeof(request_t));
 	// method
 	req->method = (char *)malloc(methodlen);
@@ -286,6 +292,10 @@ void graphdat_store(char* method, size_t methodlen, char* uri, size_t urilen, do
 	req->uri = (char *)malloc(urilen);
 	memcpy(req->uri, uri, urilen);
 	req->urilen = urilen;
+	// host
+	req->host = (char *)malloc(hostlen);
+	memcpy(req->host, host, hostlen);
+	req->hostlen = hostlen;
 	// msec
 	req->msec = msec;
 	// log
