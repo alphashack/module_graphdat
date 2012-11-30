@@ -18,6 +18,8 @@ typedef struct {
 	size_t methodlen;
 	char* uri;
 	size_t urilen;
+	char* host;
+	size_t hostlen;
 	double msec;
 	logger_delegate_t logger;
 	void * log_context;
@@ -25,7 +27,7 @@ typedef struct {
 
 void graphdat_init(char * config, size_t configlen, char* source, size_t sourcelen, logger_delegate_t logger, void * log_context);
 void graphdat_term(logger_delegate_t logger, void * log_context);
-void graphdat_store(char* method, size_t methodlen, char* uri, size_t urilen, double msec, logger_delegate_t logger, void * log_context, size_t log_context_len);
+void graphdat_store(char* method, size_t methodlen, char* uri, size_t urilen, char* host, size_t hostlen, double msec, logger_delegate_t logger, void * log_context, size_t log_context_len);
 
 #endif /* GRAPHDAT_H */
 
