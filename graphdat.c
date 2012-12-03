@@ -244,7 +244,7 @@ void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, cha
 		memcpy(route, uri, urilen);
 	}
 
-	msgpack_pack_map(pk, 4); // timestamp, type, host, route, responsetime, source
+	msgpack_pack_map(pk, 6); // timestamp, type, host, route, responsetime, source
 	// timestamp
 	msgpack_pack_raw(pk, 9);
 	msgpack_pack_raw_body(pk, "timestamp", 9);
