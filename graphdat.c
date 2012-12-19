@@ -34,6 +34,7 @@ static gd_mutex_t s_mux = NULL;
 static gd_thread_t s_thread = NULL;
 
 static int s_sock = -1;
+static long s_lastheartbeat = now();
 
 void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, char* host, size_t hostlen, double msec, logger_delegate_t logger, void * log_context);
 
@@ -126,6 +127,38 @@ bool socket_check(logger_delegate_t logger, void * log_context) {
 		return false;
 	}
 	return socket_connect(logger, log_context);
+}
+
+void socket_sendheartbeat() {
+	if(!socket_check(logger, log_context)) return;
+
+	int nlen = htonl(0);
+
+	int wrote = socketWrite(s_sock, &nlen, sizeof(nlen));
+	if(wrote < 0)
+	{
+		char * msg = socketGetLastStringError();
+		logger(ERROR_MESSAGE, log_context, "graphdat error: could not write socket '%s' (%d) - [%d] %s", s_sockconfig, s_sock, wrote, msg);
+		socketDelStringError(msg);
+		socket_close();
+		s_lastwritesuccess = false;
+	}
+    else if(VERBOSE_LOGGING)
+	{
+		logger(INFORMATION_MESSAGE, log_context, "graphdat info: heartbeat sent to '%s' (%d)", s_sockconfig, s_sock);
+	}
+}
+
+void heartbeat(bool has_sent_data) {
+	long now = now();
+
+	if(!hasSentData && now - s_lastheartbeat > 30000) {
+		socket_sendheartbeat();
+		has_sent_data = true;
+	}
+
+	if(has_sent_data)
+		s_lastheartbeat = now;
 }
 
 void* worker(void* arg)
