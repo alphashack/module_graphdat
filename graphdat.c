@@ -5,6 +5,7 @@
 #include "mutex.h"
 #include "thread.h"
 #include "socket.h"
+#include "timehelper.h"
 
 #include "./msgpack/src/msgpack.h"
 
