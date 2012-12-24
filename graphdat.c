@@ -34,7 +34,7 @@ static gd_mutex_t s_mux = NULL;
 static gd_thread_t s_thread = NULL;
 
 static int s_sock = -1;
-static long s_lastheartbeat = now();
+static int64_t s_lastheartbeat = 0;
 
 void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, char* host, size_t hostlen, double msec, logger_delegate_t logger, void * log_context);
 
@@ -73,7 +73,7 @@ bool socket_connect(logger_delegate_t logger, void * log_context) {
 		s_sock = socketNew();
 		if (s_sock < 0)
 		{
-			if(!s_lastwaserror || VERBOSE_LOGGING) {
+			if((!s_lastwaserror || VERBOSE_LOGGING)  && logger != NULL) {
 				char * msg = socketGetLastStringError();
 				logger(ERROR_MESSAGE, log_context, "graphdat error: could not create socket '%s' - [%d] %s", s_sockconfig, s_sock, msg);
 				socketDelStringError(msg);
@@ -85,7 +85,7 @@ bool socket_connect(logger_delegate_t logger, void * log_context) {
 		int result = socketConnect(s_sock, s_sockconfig);
 		if(result < 0)
 		{
-			if(!s_lastwaserror || VERBOSE_LOGGING) {
+			if((!s_lastwaserror || VERBOSE_LOGGING) && logger != NULL) {
 				int err = socketGetLastError();
 				char * msg = socketGetStringError(err);
 				logger(ERROR_MESSAGE, log_context, "graphdat error: could not connect socket '%s' (%d) - [%d] %s", s_sockconfig, s_sock, err, msg);
@@ -99,7 +99,7 @@ bool socket_connect(logger_delegate_t logger, void * log_context) {
 		result = socketSetNonBlock(s_sock);
 		if(result < 0)
 		{
-			if(!s_lastwaserror || VERBOSE_LOGGING) {
+			if((!s_lastwaserror || VERBOSE_LOGGING) && logger != NULL) {
 				int err = socketGetLastError();
 				char * msg = socketGetStringError(err);
 				logger(ERROR_MESSAGE, log_context, "graphdat error: could set non blocking socket '%s' (%d) - [%d] %s", s_sockconfig, s_sock, err, msg);
@@ -110,7 +110,7 @@ bool socket_connect(logger_delegate_t logger, void * log_context) {
 			return false;
 		}
 
-		if(VERBOSE_LOGGING)
+		if(VERBOSE_LOGGING && logger != NULL)
 		{
 			logger(INFORMATION_MESSAGE, log_context, "graphdat info: soket connected '%s' (%d)", s_sockconfig, s_sock);
 		}
@@ -120,7 +120,7 @@ bool socket_connect(logger_delegate_t logger, void * log_context) {
 
 bool socket_check(logger_delegate_t logger, void * log_context) {
 	if(!s_init) {
-		if(!s_lastwaserror) {
+		if(!s_lastwaserror && logger != NULL) {
 			logger(ERROR_MESSAGE, log_context, "graphdat error: not initialised");
 			s_lastwaserror = true;
 		}
@@ -130,29 +130,22 @@ bool socket_check(logger_delegate_t logger, void * log_context) {
 }
 
 void socket_sendheartbeat() {
-	if(!socket_check(logger, log_context)) return;
+	if(!socket_check(NULL, NULL)) return;
 
 	int nlen = htonl(0);
 
 	int wrote = socketWrite(s_sock, &nlen, sizeof(nlen));
 	if(wrote < 0)
 	{
-		char * msg = socketGetLastStringError();
-		logger(ERROR_MESSAGE, log_context, "graphdat error: could not write socket '%s' (%d) - [%d] %s", s_sockconfig, s_sock, wrote, msg);
-		socketDelStringError(msg);
 		socket_close();
 		s_lastwritesuccess = false;
-	}
-    else if(VERBOSE_LOGGING)
-	{
-		logger(INFORMATION_MESSAGE, log_context, "graphdat info: heartbeat sent to '%s' (%d)", s_sockconfig, s_sock);
 	}
 }
 
 void heartbeat(bool has_sent_data) {
-	long now = now();
+	int64_t now = get_ms();
 
-	if(!hasSentData && now - s_lastheartbeat > 30000) {
+	if(!has_sent_data && now - s_lastheartbeat > 30000) {
 		socket_sendheartbeat();
 		has_sent_data = true;
 	}
@@ -164,6 +157,7 @@ void heartbeat(bool has_sent_data) {
 void* worker(void* arg)
 {
 	request_t *req;
+	bool has_sent_data = false;
 
 	while(s_running) {
 		mutexAcquire(s_mux);
@@ -172,11 +166,14 @@ void* worker(void* arg)
 
 		if(req != NULL) {
 			graphdat_send(req->method, req->methodlen, req->uri, req->urilen, req->host, req-> hostlen, req->msec, req->logger, req->log_context);
+			has_sent_data = true;
 			del_request(req);
 		}
 		else
 		{
+			heartbeat(has_sent_data);
 			usleep(GRAPHDAT_WORKER_LOOP_SLEEP);
+			has_sent_data = false;
 		}
 	}
 	return NULL;
