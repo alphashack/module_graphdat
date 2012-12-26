@@ -1,3 +1,7 @@
+#include "timehelper.h"
+#include "os.h"
+#include <time.h>
+
 int64_t get_ms()
 {
 	FILETIME ft;
