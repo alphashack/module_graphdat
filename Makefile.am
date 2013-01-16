@@ -9,6 +9,7 @@ endif
 
 AM_CFLAGS=@MYCFLAGS@
 AM_CPPFLAGS=-Ios -Ios/$(SYSTEM) @MYCPPFLAGS@
+ACLOCAL_AMFLAGS=-I m4
 
 libgraphdat_1_0_la_SOURCES =	\
 	list.c						\
