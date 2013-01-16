@@ -39,6 +39,11 @@ static int64_t s_lastheartbeat = 0;
 
 void graphdat_send(char* method, size_t methodlen, char* uri, size_t urilen, char* host, size_t hostlen, double msec, logger_delegate_t logger, void * log_context);
 
+void default_logger(graphdat_log_t type, void * user, const char * fmt, ...);
+
+static logger_delegate_t wrapped_logger = default_logger;
+static logger_delegate2_t actual_logger = NULL;
+
 void socket_close() {
 	socketClose(s_sock);
 	s_sock = -1;
@@ -88,7 +93,8 @@ bool socket_connect(logger_delegate_t logger, void * log_context) {
 		{
 			if((!s_lastwaserror || VERBOSE_LOGGING) && logger != NULL) {
 				int err = socketGetLastError();
-				char * msg = socketGetStringError(err);
+				char * msg = NULL;
+				msg = socketGetStringError(err);
 				logger(ERROR_MESSAGE, log_context, "graphdat error: could not connect socket '%s' (%d) - [%d] %s", s_sockconfig, s_sock, err, msg);
 				socketDelStringError(msg);
 				s_lastwaserror = true;
@@ -113,7 +119,7 @@ bool socket_connect(logger_delegate_t logger, void * log_context) {
 
 		if(VERBOSE_LOGGING && logger != NULL)
 		{
-			logger(INFORMATION_MESSAGE, log_context, "graphdat info: soket connected '%s' (%d)", s_sockconfig, s_sock);
+			logger(INFORMATION_MESSAGE, log_context, "graphdat info: socket connected '%s' (%d)", s_sockconfig, s_sock);
 		}
 	}
 	return true;
@@ -243,6 +249,16 @@ void socket_send(char * data, size_t len, logger_delegate_t logger, void * log_c
 	}
 }
 
+void default_logger(graphdat_log_t type, void * user, const char * fmt, ...)
+{
+	va_list argp;
+	va_start(argp, fmt);
+
+	vprintf(fmt, argp);
+
+	va_end(argp);
+}
+
 void graphdat_init(char * config, size_t configlen, char* source, size_t sourcelen, logger_delegate_t logger, void * log_context) {
 	s_mux = mutexNew();
 	socket_init(config, configlen, source, sourcelen, logger, log_context);
@@ -330,7 +346,14 @@ void graphdat_store(char* method, size_t methodlen, char* uri, size_t urilen, ch
 	// msec
 	req->msec = msec;
 	// log
-	req->logger = logger;
+	if(logger != NULL)
+	{
+		req->logger = logger;
+	}
+	else
+	{
+		req->logger = default_logger;
+	}
 	if(log_context != NULL)
 	{
 		req->log_context = malloc(log_context_len);
@@ -344,4 +367,43 @@ void graphdat_store(char* method, size_t methodlen, char* uri, size_t urilen, ch
 	mutexAcquire(s_mux);
 	listAppendBack(s_requests, req);
 	mutexRelease(s_mux);
+}
+
+void logger_wrapper(graphdat_log_t type, void * user, const char * fmt, ...)
+{
+	va_list argp;
+	va_start(argp, fmt);
+
+	char *msg = "";
+	int res = vasprintf(&msg, fmt, argp);
+
+	if(res >= 0)
+	{
+		actual_logger(type, user, msg);
+		free(msg);
+	}
+
+	va_end(argp);
+}
+
+logger_delegate_t wrap_logger(logger_delegate2_t logger)
+{
+	if(logger != NULL)
+	{
+		actual_logger = logger;
+		wrapped_logger = logger_wrapper;
+	}
+}
+
+void graphdat_init2(char * config, char* source, logger_delegate2_t logger, void * log_context) {
+	wrap_logger(logger);
+	graphdat_init(config, strlen(config), source, strlen(source), wrapped_logger, log_context);
+}
+
+void graphdat_term2(void * log_context) {
+	graphdat_term(wrapped_logger, log_context);
+}
+
+void graphdat_store2(char* method, char* uri, char* host, double msec, void * log_context, size_t log_context_len) {
+	graphdat_store(method, strlen(method), uri, strlen(uri), host, strlen(host), msec, wrapped_logger, log_context, log_context_len);
 }

@@ -44,3 +44,9 @@ UpgradeLog.XML
 *.la
 .libs/
 *~
+config.guess
+config.h.in
+config.sub
+config.tmp
+libtool
+ltmain.sh

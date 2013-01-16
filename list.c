@@ -80,10 +80,9 @@ void listDel(
 {
 	listi_t * plst = (listi_t *) lst;
 
-	//if (plst == NULL)
-	//	return;
-	plst=NULL;
-
+	if (plst == NULL)
+		return;
+	
 	list_node_t * pnext;
 	list_node_t * p;
 	for (p = plst->phead; p != NULL; p = pnext)
