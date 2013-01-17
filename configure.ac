@@ -1,7 +1,6 @@
 AC_INIT([libgraphdat], [1.0], [support@graphdat.com], [libgraphdat],[http://www.graphdat.com])
 AM_INIT_AUTOMAKE([foreign -Wall -Werror])
 AC_CONFIG_HEADERS([config.h])
-AC_CONFIG_MACRO_DIR([m4])
 AC_ENABLE_SHARED(yes)
 AC_ENABLE_STATIC(no)
 LT_INIT
