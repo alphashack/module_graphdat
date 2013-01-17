@@ -26,3 +26,4 @@ UpgradeLog.XML
 *.la
 .libs/
 *~
+libtool
