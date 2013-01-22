@@ -20,6 +20,7 @@ AM_CONDITIONAL(DARWIN, test x$darwin = xtrue)
 if uname | grep Linux >config.tmp
 then
 	linux=true
+	MYLDFLAGS="-lrt"
 	AC_DEFINE([OS_LINUX],[1],[on linux])
 	AC_DEFINE([LINUX],[1],[on linux])
 fi
@@ -29,5 +30,6 @@ AC_CONFIG_FILES([Makefile])
 
 AC_SUBST(MYCPPFLAGS)
 AC_SUBST(MYCFLAGS)
+AC_SUBST(MYLDFLAGS)
 
 AC_OUTPUT
