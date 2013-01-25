@@ -22,7 +22,8 @@
 
 #define VERBOSE_LOGGING false
 
-static bool s_init = false;
+static bool s_init_done = false;
+static bool s_init_success = false;
 static bool s_running = true;
 static char * s_sockconfig = NULL;
 static char * s_source = NULL;
@@ -63,7 +64,7 @@ void dlg_del_request(void * item) {
 }
 
 void socket_term(logger_delegate_t logger, void * log_context) {
-        if(s_init) {
+        if(s_init_success) {
             s_running = false;
             threadJoin(s_thread);
 			socket_close();
@@ -126,7 +127,7 @@ bool socket_connect(logger_delegate_t logger, void * log_context) {
 }
 
 bool socket_check(logger_delegate_t logger, void * log_context) {
-	if(!s_init) {
+	if(!s_init_success) {
 		if(!s_lastwaserror && logger != NULL) {
 			logger(ERROR_MESSAGE, log_context, "graphdat error: not initialised");
 			s_lastwaserror = true;
@@ -197,7 +198,7 @@ void socket_init(char * config, size_t configlen, char* source, size_t sourcelen
 	s_source[sourcelen] = 0;
 	s_requests = listNew();
 	s_thread = threadNew(worker, NULL);
-	s_init = true;
+	s_init_success = true;
 }
 
 void socket_send(char * data, size_t len, logger_delegate_t logger, void * log_context) {
@@ -260,8 +261,11 @@ void default_logger(graphdat_log_t type, void * user, const char * fmt, ...)
 }
 
 void graphdat_init(char * config, size_t configlen, char* source, size_t sourcelen, logger_delegate_t logger, void * log_context) {
-	s_mux = mutexNew();
-	socket_init(config, configlen, source, sourcelen, logger, log_context);
+	if(!s_init_done) {
+		s_init_done;
+		s_mux = mutexNew();
+		socket_init(config, configlen, source, sourcelen, logger, log_context);
+	}
 }
 
 void graphdat_term(logger_delegate_t logger, void * log_context) {
