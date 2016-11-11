@@ -1,6 +1,8 @@
 module_graphdat
 ===============
 
+## DEPRECATED - This is now longer in use or supported.
+
 Common module functionality used to build 3rd party modules that can send measures to graphdat
 
 To add this submodule to your project, do something like:
